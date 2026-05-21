@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<!-- saved from url=(0063)https://immersive-web.github.io/webxr-samples/ar-barebones.html -->
+<html><head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://immersive-web.github.io/webxr-samples/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="https://immersive-web.github.io/webxr-samples/favicon-96x96.png">
+    <link rel="stylesheet" href="./AR-Rive_css/common.css">
+
+    <title>AR-Rive (Beitrag von Ulf)</title>
+
+    <style>
+        .groß {
+            font-size: 36px;
+        }
+
+        .mittel {
+            font-size: 16px;
+        }
+    
+        .klein {
+            font-size: 12px;
+        }
+    </style> <!-- uk 2026-03-26-->
+
+
+</head>
+      <body>
+          <div id="overlay">
+              <header>
+                  <details open="">
+                      <summary>
+                          <!-- WebXR DOM Overlay-->
+                          <span id="titel_uk">AR-Rive</span>
+                      </summary>
+                      <p>
+
+                          <!--This sample demonstrates extremely simple use of an "immersive-ar"
+    session with no library dependencies, with an optional DOM overlay.
+    It doesn't render anything exciting, just draws a rectangle with a
+    slowly changing color to prove it's working.
+    <a class="back" href="https://immersive-web.github.io/webxr-samples/index.html">Back</a>-->
+
+                          <span>La/Lo:</span>
+                          <span id="latitude"></span>/<span id="longitude"></span> | Acc: +/- <span id="accuracy"></span> m<br />
+
+                          <span>ell. Höhe: </span> <span id="altitude"></span> m <span> | Acc: +/- </span> <span id="altitudeAccuracy"></span>  <br />
+                          <span>E/N: </span> <span id="east"></span> / <span id="north"></span><br />
+                          <span>Azimut: </span> <span id="heading"></span><br />
+                          <span>Azimut2 initGPS()watchPosition(): </span> <span id="heading2"></span><br />
+                          <span>Azimut in render(): </span> <span id="heading_render"></span><br />
+                          <span>Azimut_rad in render(): </span> <span id="heading_render_rad"></span><br />
+                          <span>WebXRintern in render(): </span> <span id="renderWebXRintern"></span><br />
+                          <span>Verdrehung WebXRintern in render(): </span> <span id="VerdrehungrenderWebXRintern"></span><br />
+                          <span>Sphere.position in render(): </span> <span id="render_spherePos"></span><br />
+                          <span>E/N: </span> <span id="east_z"></span> / <span id="north_z"></span> (Ziel)<br />
+                          <span>Dist: </span><span id="distanz"></span><br />
+                          <span>dE/nN: </span> <span id="deast_z"></span> / <span id="dnorth_z"></span> (Ziel)<br />
+                          <span>Anweisung 1: </span> <span id="Anweisung1"></span><br />
+                          <span>Anweisung 2: </span> <span id="Anweisung2"></span><br />
+                          <span>moved: </span> <span id="moved"></span><br />
+                      </p>
+                      <div id="session-info"></div>
+                      <div id="pose"></div>
+                      <div id="warning-zone"></div>
+                      <label for="targetSelect">Ziel auswählen:</label><br />
+                      <select id="targetSelect">
+                          <option value="" disabled selected>-- Ziel bitte auswählen --</option>
+                          <option value="emi">EMI Gebäude</option>
+                          <option value="nord">ca. 50m Nördlich von kl. Haus</option>
+                      </select>
+                      <br />
+                      <br />
+                      <div style="text-align: right;">
+                          <button id="xr-button" class="barebones-button" disabled="">AR not found</button><br />
+                          <!--<button id="gps-button" class="barebones-button">Start GPS</button> bei Bedarf uk, 2026-03-29-->
+                      </div>
+
+
+
+                  </details>
+              </header>
+          </div>
+          <main style="text-align: left;">
+              <!-- <p>Klick Button 'Enter AR' klicken, um den Weg zu finden ...</p> wird zunächst nicht mehr benötigt, uk 2026-03-27-->
+              <p>Hinweis:<br />
+              Ziel auswählen + Button 'Start AR' klicken, um den Weg zu finden ...</p>
+          </main>
+
+
+
+          <script type="module">
+              import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
+              //import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/ARButton.js';
+
+              // ===== Zielkoordinaten =====
+
+             
+
+              let TARGET_LAT = 52.4144796;
+              let TARGET_LON = 13.7922352;
+
+              const TARGETS = {
+                  emi: { lat: 49.44489, lon: 11.84737 },
+                  nord: { lat: 52.4159796, lon: 13.8038785 },
+              };
+
+
+
+
+
+
+              // ===== THREE.js Setup =====
+              let camera, scene, renderer;
+              let sphere;
+
+              // ===== GPS =====
+              let currentUTM = null;
+              let targetUTM = null;
+              //NEU für GPS/UTM/SLAM Reset uk 2026-03-28
+              let originUTM = null;
+              let lastResetUTM = null;
+              let resetActive = false;
+              let text = " (Reset noch inaktiv)";
+              let resetActive_count = 0;
+
+              // ===== Kompass und filter =====
+              let heading = 0;
+              let smoothedPosition = new THREE.Vector3();
+              let initialized = false;
+              let headingOffset = null; //  uk 2026-03-28
+              let schalterEinmalNord = false; //  uk 2026-03-28
+              let headingFuerX3D_einmalNord = null; //  uk 2026-03-29
+
+              //==========Distanz UI =============
+              let distanceDiv;
+
+              let xrSession = null;//  uk 2026-03-29
+              let moved = 0.0; //uk, 2026-04-06
+
+              //==========Koord-Ursprung im Renderer Nullsetzen =============
+              let offsetReferenceSpace = null;//uk, 2026-04-08
+              let resetRequested = false;//uk, 2026-04-08
+
+
+
+
+              // ===== INIT =====
+              init();
+              initGPS();//wegen GPS-Button bei Bedarf ein/auskommentieren uk, 2026-03-29
+
+              function init() {
+
+                  scene = new THREE.Scene();
+
+                  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 2000);
+
+                  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                  renderer.setSize(window.innerWidth, window.innerHeight);
+                  renderer.xr.enabled = true;
+
+                  document.body.appendChild(renderer.domElement);
+                  //document.body.appendChild(ARButton.createButton(renderer));
+                  /*
+                  document.body.appendChild(ARButton.createButton(renderer, {
+                      requiredFeatures: ['dom-overlay'],
+                      domOverlay: { root: document.getElementById('overlay') }
+                  }));//sonst wird overlay nicht übergeben und distanceDiv ist nicht mehr sichtbar im AR-Modus; uk 2026-03-27
+                  */
+
+                 /* GPS-Button bei Bedarf uk, 2026-03 - 29
+                  const gpsButton = document.getElementById("gps-button");
+                  let gpsStarted = false;//verhindert mehrfaches Starten von GPS, uk 2026-03-28
+                  gpsButton.addEventListener("click", () => {
+                      if (!gpsStarted) {
+                          initGPS();
+                          gpsStarted = true;
+                          gpsButton.textContent = "GPS läuft...";
+                          gpsButton.disabled = true;
+                      }
+                  });
+                  */
+
+
+                  //Distanz:
+                  distanceDiv = document.createElement("div");
+                  distanceDiv.style.position = "absolute";
+                  distanceDiv.style.top = "20px";
+                  distanceDiv.style.left = "20px";
+                  distanceDiv.style.color = "white";
+                  distanceDiv.style.fontSize = "24px";
+                  distanceDiv.style.background = "rgba(0,0,0,0.5)";
+                  distanceDiv.style.padding = "10px";
+                  distanceDiv.innerText = "Distanz: -- m";
+                  distanceDiv.id = "distanz2";
+                  //document.body.appendChild(distanceDiv);//alt
+                  //document.getElementById("overlay").appendChild(distanceDiv);//Diese Zeile wieder einkommentieren, falls Distanz-Overlay benötigt wird, uk 2026-03-27
+
+
+                  // Licht
+                  const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+                  scene.add(light);
+
+                  // ===== Kugel =====
+                  const geometry = new THREE.SphereGeometry(1, 16, 16); // Radius = 5m
+                  //const material = new THREE.MeshStandardMaterial({ color: 0xffb347 });
+                  const material = new THREE.MeshStandardMaterial({
+                      color: 0xffa500,       // Grundfarbe (Orange)
+                      emissive: 0xffa500,    // Leuchtfarbe (Orange)
+                      emissiveIntensity: 1   // Stärke des Leuchtens
+                  });
+
+                  sphere = new THREE.Mesh(geometry, material);
+                  sphere.visible = false;
+                  scene.add(sphere);
+
+                  //window.addEventListener("deviceorientation", (event) => { // uk 2026-03-27 //nur relativer Nordwert
+                  window.addEventListener("deviceorientationabsolute", (event) => {
+                      if (event.alpha !== null) {
+                          //heading = event.alpha; // 0–360° //ging bei mir jeweils von 0 bis 180 und nicht von 0 bis 360
+                          heading = (360 - event.alpha) % 360; //jetzt funktionierts von 0-360
+                          console.log("Kompass:", heading.toFixed(3));
+                          document.getElementById("heading").textContent = heading.toFixed(3);// uk 2026-03-27 
+                      }
+                  });
+
+                  renderer.setAnimationLoop(render);
+
+                  //=========== Button ==============
+                  const button = document.getElementById("xr-button");
+
+                  button.style.visibility = "hidden";//Button unsichtbar machen
+
+                  if (navigator.xr) {
+                      navigator.xr.isSessionSupported("immersive-ar").then((supported) => {
+                          if (supported) {
+                              button.disabled = false;
+                              button.textContent = "Start AR";
+
+                              button.addEventListener("click", async () => {
+                                  const select = document.getElementById("targetSelect");
+
+                                  if (!select.value) {
+                                      alert("Bitte zuerst ein Ziel auswählen!");
+                                      return;
+                                  }
+
+                                  select.disabled = true;
+
+                                  const session = await navigator.xr.requestSession("immersive-ar", {
+                                      requiredFeatures: ["local", "dom-overlay"],
+                                      domOverlay: { root: document.getElementById("overlay") }
+                                  });
+
+                                  xrSession = session;
+
+                                  renderer.xr.setReferenceSpaceType("local");
+                                  renderer.xr.setSession(session);
+
+                                  //Heading-Referenz setzen (beim Start!) uk 2026-03-28
+                                  //headingOffset = heading;
+                                  if (heading >= 0 && heading <= 180) {//für rechten Halbkreis, weil in WebXR 0 bi -180 (also negativ)
+                                      headingFuerX3D_einmalNord = heading;// für rechten Halbkreis N-O-S 0-180 weil Minus in WebXR, uk 2026-03-29
+                                  }
+                                  if (heading > 180 && heading <= 360) {//für linken Halbkreis, weil in WebXR 0 bi 180 (also positiv, aber nicht bis 360 geht)
+                                      //noch prüfen: TODO
+                                      headingFuerX3D_einmalNord = (360 - heading) * (-1);// für rechten Halbkreis N-O-S 0-180 weil Minus in WebXR, uk 2026-03-29
+                                      
+                                  }
+
+                                  // Overlay einklappen
+                                  document.querySelector("#overlay details").open = false; //aufklappen oder zuklappen
+
+                                  button.textContent = "Stop AR";
+
+                                  session.addEventListener("end", () => {
+                                      button.textContent = "Start AR / Fortsetzen AR";
+                                      //Dropdown Ortsliste wieder aktivieren:
+                                      const select = document.getElementById("targetSelect");
+                                      select.disabled = false;
+
+                                      button.style.visibility = "visible";  // uk 2026-04-06
+                                      xrSession = null; // uk 2026-04-06
+                                      document.querySelector("#overlay details").open = true; //aufklappen oder zuklappen // uk 2026-04-06
+
+                                  });
+
+                                  // Stop-Funktion beim zweiten Klick
+                                  button.onclick = () => {
+                                      session.end();
+                                  };
+                              });
+                          } else {
+                              button.textContent = "AR not supported";
+                          }
+                      });
+                  } else {
+                      button.textContent = "WebXR not available";
+                  }
+
+                  //========= für Orte Liste ============= uk, 2026-03-29
+                  const select = document.getElementById("targetSelect");
+
+                  select.addEventListener("change", (e) => {
+                      const key = e.target.value;
+
+                      TARGET_LAT = TARGETS[key].lat;
+                      TARGET_LON = TARGETS[key].lon;
+
+                      //Ziel neu berechnen
+                      targetUTM = latLonToUTM(TARGET_LAT, TARGET_LON);
+
+                      console.log("Neues Ziel:", TARGET_LAT, TARGET_LON)
+
+                      if (select.value) {
+                          button.style.visibility = "visible";
+                      }
+
+
+                  });
+
+
+
+
+
+                  //======== N-S-O-W - KUGELN  ===================
+
+                  // Blaue Kugel (Radius = 1m) NORDEN
+                  const blueGeometry = new THREE.SphereGeometry(1, 32, 32);
+                  const blueMaterial = new THREE.MeshStandardMaterial({
+                      color: 0x0000ff
+                  });
+
+                  const blueSphere = new THREE.Mesh(blueGeometry, blueMaterial);
+
+                  // 10 m vor dir (WebXR: -Z = nach vorne)
+                  blueSphere.position.set(0, 0, -10);
+
+                  scene.add(blueSphere);
+
+                  // Rote Kugel (Radius = 1m) SÜDEN
+                  const redGeometry = new THREE.SphereGeometry(1, 32, 32);
+                  const redMaterial = new THREE.MeshStandardMaterial({
+                      color: 0xff0000
+                  });
+
+                  const redSphere = new THREE.Mesh(redGeometry, redMaterial);
+
+                  //10 Meter hinter mir
+                  redSphere.position.set(0, 0, 10);
+
+                  scene.add(redSphere);
+
+                  //Grüne Kugel (Radius = 1m) OSTEN
+                  const greenGeometry = new THREE.SphereGeometry(1, 32, 32);
+                  const greenMaterial = new THREE.MeshStandardMaterial({
+                      color: 0x00ff00
+                  });
+
+                  const greenSphere = new THREE.Mesh(greenGeometry, greenMaterial);
+
+                  //10 m rechts
+                  greenSphere.position.set(10, 0, 0);
+
+                  scene.add(greenSphere);
+
+                  //Lila Kugel (Radius = 1m) WESTEN
+                  const purpleGeometry = new THREE.SphereGeometry(1, 32, 32);
+                  const purpleMaterial = new THREE.MeshStandardMaterial({
+                      color: 0x800080 // Lila
+                  });
+
+                  const purpleSphere = new THREE.Mesh(purpleGeometry, purpleMaterial);
+
+                  // 👉 Beispiel: 10 m vor dir, etwas weiter rechts
+                  purpleSphere.position.set(-10, 0, 0);
+
+                  scene.add(purpleSphere);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              }//end init()
+
+              // ===== GPS =====
+              function initGPS() {
+
+                  //targetUTM = latLonToUTM(TARGET_LAT, TARGET_LON);// ist jetzt in der init() in der select.addEventListener() integriert, uk 2026-03.29
+
+                  navigator.geolocation.watchPosition(pos => {
+                      //const { latitude, longitude, accuracy, altitude, altitudeAccuracy} = pos.coords; // uk 2026-03-27
+                      const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading } = pos.coords; // uk 2026-03-27
+                      //falls hier heading in geschweiften Klammern, dann ist das Bewegungsheading, keine True Nord
+                      //WICHTIG: Trotzdem aktiv lassen, da das heading1 dann interessanterweise besser wird, warum auch immer, uk 2026-03-27
+                      document.getElementById("heading2").textContent = heading.toFixed(1);// keine True Nord; uk 2026-03-27
+
+                      currentUTM = latLonToUTM(latitude, longitude);
+                      document.getElementById("latitude").textContent = latitude;// uk 2026-03-26
+                      document.getElementById("longitude").textContent = longitude;// uk 2026-03-26
+                      document.getElementById("accuracy").textContent = accuracy != null ? accuracy.toFixed(1) : "-";// uk 2026-03-26
+                      document.getElementById("altitude").textContent = altitude != null ? altitude.toFixed(1) : "-";// uk 2026-03-26
+                      document.getElementById("altitudeAccuracy").textContent = altitudeAccuracy;
+
+                      /// Hilfsfunktion für GPS/UTM/SLAM Reset uk 2026-03-28
+                      // ===== Referenz initial setzen =====
+                      if (!originUTM && accuracy < 10) {
+                          originUTM = currentUTM;
+                          lastResetUTM = currentUTM;
+                          console.log("📍 Ursprung gesetzt");
+                      }
+                      // ===== soft Reset alle 10 m =====
+                      if (originUTM && accuracy < 10) {
+                          //let moved = distanceUTM(currentUTM, lastResetUTM);
+                          moved = distanceUTM(currentUTM, lastResetUTM);
+                          document.getElementById("moved").textContent = moved.toFixed(1), " m";//uk 2026-04-06
+
+
+
+                          if (moved > 30) {
+                              console.log("🔄 Soft-Reset nach", moved.toFixed(1), "m");
+
+                              // 👉 SANFTE KORREKTUR statt hartem Reset
+                              originUTM.E = 0.9 * originUTM.E + 0.1 * currentUTM.E;
+                              originUTM.N = 0.9 * originUTM.N + 0.1 * currentUTM.N;
+
+                              lastResetUTM = currentUTM;
+
+                              resetActive = true; //
+
+                              //Idee/ToDo 2026-04-06: 
+                              //Hier eventuell zukünftig
+                              //den Ursprung des originUTM verschieben/neu initialisieren
+                              //und auf xrSession.end() verzichten
+
+                              // 👉 AR stoppen //uk 2026-04-06
+                              if (xrSession) {
+                                  console.log("🛑 30 m erreicht → AR wird beendet");
+                                  xrSession.end();
+
+                                  resetRequested = true;//uk 2026-04-08
+                              }
+
+
+                          }
+                      }
+                      if (resetActive) {
+                          //text += " (Reset aktiv)";
+                          resetActive_count += 1;
+                          text = "aktiviert: " + resetActive_count;
+                          resetActive = false; // nur einmal anzeigen
+                      }
+
+                      document.getElementById("Anweisung2").textContent = text;
+
+                      //const { E, N } = rechneGeogrKoordInUTMKoordUm(latitude, longitude);
+                      let { E, N } = latLonToUTM(latitude, longitude);// uk 2026-03-26
+                      document.getElementById("east").textContent = E.toFixed(1);
+                      document.getElementById("north").textContent = N.toFixed(1);
+
+
+
+                      document.getElementById("east_z").textContent = targetUTM.E.toFixed(1);// uk 2026-03-27
+                      document.getElementById("north_z").textContent = targetUTM.N.toFixed(1);// uk 2026-03-27
+
+
+
+                  },
+                      err => console.error(err),
+                      { enableHighAccuracy: true });
+                  document.getElementById("latitude").textContent = "wird gesucht";
+                  document.getElementById("longitude").textContent = "wird gesucht";
+                  document.getElementById("altitude").textContent = "wird gesucht";
+              }//end initGPS()
+
+
+
+              // ===== RENDER LOOP =====
+              function render(time, frame) {
+
+                  
+
+                  let headingRad = THREE.MathUtils.degToRad(heading);//heading aus Compass //prüfen, ob noch benötigt wird, uk 2026-03-28
+                  document.getElementById("heading_render").textContent = heading.toFixed(2);// uk 2026-03-27 
+                  document.getElementById("heading_render_rad").textContent = headingRad.toFixed(2);// uk 2026-03-27
+
+                  let verdrehung = null;//in degree uk 2026-04-28
+
+                      let referenceSpace = renderer.xr.getReferenceSpace();
+                      const session = renderer.xr.getSession();
+                     //hier Zugriff auf den aktuellen WebXR-Origin
+
+                      if (frame && referenceSpace) {
+
+
+
+                          // 👉 RESET auslösen uk 2026-04-08
+                          if (resetRequested) {
+                              const pose = frame.getViewerPose(referenceSpace);
+
+                              if (pose) {
+                                  const pos = pose.transform.position;
+
+                                  const offset = new XRRigidTransform({
+                                      x: -pos.x,
+                                      y: -pos.y,
+                                      z: -pos.z
+                                  });
+
+                                  offsetReferenceSpace = referenceSpace.getOffsetReferenceSpace(offset);
+
+                                  console.log("🔄 WebXR Ursprung verschoben");
+                              }
+
+                              resetRequested = false;
+                          }
+
+                          // 👉 Falls Offset existiert, benutze ihn
+                          if (offsetReferenceSpace) {
+                              referenceSpace = offsetReferenceSpace;
+                          }
+
+
+
+
+
+
+                          const pose = frame.getViewerPose(referenceSpace);
+
+                          if (pose) {
+
+                              const view = pose.views[0];
+
+                              // 🔥 Orientierung (Quaternion)
+                              const orientation = view.transform.orientation;
+
+                              // THREE Quaternion erstellen
+                              const q = new THREE.Quaternion(
+                                  orientation.x,
+                                  orientation.y,
+                                  orientation.z,
+                                  orientation.w
+                              );
+
+                              // 👉 in Euler umwandeln (Winkel)
+                              const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+
+                              const yaw = THREE.MathUtils.radToDeg(euler.y); // Drehung links/rechts
+                              const pitch = THREE.MathUtils.radToDeg(euler.x); // nach oben/unten
+                              const roll = THREE.MathUtils.radToDeg(euler.z); // kippen
+
+                              document.getElementById("renderWebXRintern").textContent =
+                                  `Yaw: ${yaw.toFixed(1)}° | Pitch: ${pitch.toFixed(1)}° | Roll: ${roll.toFixed(1)}°`;
+
+                              //wenn AzimutEcht zw. 0 und 180 dann:
+                              //AzimutEcht-|AzimutWebXR| = Differenz, um die die Scene um die Vertikalachse zu drehen ist
+                              //if   HIER WEITERMACHEN  Achtung, Dist wird aktuell nicht in Titel übernommen, Problem zu prüfen!
+                              verdrehung = heading - Math.abs(yaw)
+                              document.getElementById("VerdrehungrenderWebXRintern").textContent = verdrehung.toFixed(1) + "°" ;
+                          }
+                      }//end if
+
+
+                  //scene.rotation.y = THREE.MathUtils.degToRad(0);
+                  if (schalterEinmalNord == false) { //  uk 2026-03-28)
+                      // schalterEinmalNord = true; // uk 2026-04-08: wenn diese Zeile deaktiviert ist funktionierts: einmalige Übergabe von Magnetisch Nord
+                      scene.rotation.y = THREE.MathUtils.degToRad(headingFuerX3D_einmalNord);//heading setzen anstatt 0 wird -heading gesetzt
+                      //scene.rotation.y = THREE.MathUtils.degToRad(verdrehung);//um x° nach rechts drehen
+                      //scene.rotation.y = THREE.MathUtils.degToRad(0);//wieder starr schalten
+                  }
+                  //scene.rotation.y = THREE.MathUtils.degToRad(heading);
+                  //scene.rotation.x = THREE.MathUtils.degToRad(15);
+
+
+
+
+                 // ===== KOMPASS-KORREKTUR =====
+                 
+                  if (currentUTM && targetUTM) {
+
+
+                      //Neu für GPS/UTM/SLAM Reset uk 2026-03-28
+                      if (!originUTM) return;
+                      //GNSS-basierter Offset, nicht SLAM
+                      //let dx = targetUTM.E - originUTM.E; 
+                      //let dz = targetUTM.N - originUTM.N; 
+                      let dx = targetUTM.E - currentUTM.E; //alt, vor 2026-03-28 => am 2026-04-08 wieder reaktiviert, da die orange Target-Kugel nie erreicht wurde
+                      let dz = targetUTM.N - currentUTM.N; //alt, vor 2026-03-28 => am 2026-04-08 wieder reaktiviert, da die orange Target-Kugel nie erreicht wurde
+                      //TODO: die komplette "originUTM" Behandlung prüfen, ob benötigt wird //uk, 2026-04-08
+
+
+
+
+                      let titel_pfeil = "";
+
+                      if (dz < 0 && dx > 0) {
+                          document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen";// uk 2026-03-27 ↘ ↗ →1
+                          if (heading >= 0 && heading < 45) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "↘";// uk 2026-03-27 
+                              titel_pfeil = "\u2009↘";// uk 2026-03-28
+                          }
+                          if (heading >= 45 && heading < 90) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "→";// uk 2026-03-27
+                              titel_pfeil = "\u2009→";// uk 2026-03-28
+                          }
+                          if (heading >= 90 && heading < 135) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "↗";// uk 2026-03-27 
+                              titel_pfeil = "\u2009↗";// uk 2026-03-28
+                          }
+                          if (heading >= 135 && heading < 180) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "↑";// uk 2026-03-27 
+                              titel_pfeil = "\u2009↑";// uk 2026-03-28
+                          }
+                          if (heading >= 180 && heading < 225) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "↖";// uk 2026-03-27
+                              titel_pfeil = "\u2009↖";// uk 2026-03-28
+                          }
+                          if (heading >= 225 && heading < 270) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "←";// uk 2026-03-27
+                              titel_pfeil = "\u2009←";// uk 2026-03-28
+                          }
+                          if (heading >= 270 && heading < 315) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "↙";// uk 2026-03-27
+                              titel_pfeil = "\u2009↙";// uk 2026-03-28
+                          }
+                          if (heading >= 315 && heading < 360) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Osten gehen " + "↓";// uk 2026-03-27 
+                              titel_pfeil = "\u2009↓";// uk 2026-03-28
+                          }
+                      } 
+
+                      if (dz < 0 && dx < 0) {
+                          document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen";// uk 2026-03-27
+                          if (heading >= 0 && heading < 45) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "↓";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↓";// uk 2026-03-29
+                          }
+                          if (heading >= 45 && heading < 90) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "↘";// uk 2026-03-29
+                              titel_pfeil = "\u2009↘";// uk 2026-03-29
+                          }
+                          if (heading >= 90 && heading < 135) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "→";// uk 2026-03-29
+                              titel_pfeil = "\u2009→";// uk 2026-03-29
+                          }
+                          if (heading >= 135 && heading < 180) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "↗";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↗";// uk 2026-03-29
+                          }
+                          if (heading >= 180 && heading < 225) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "↑";// uk 2026-03-29
+                              titel_pfeil = "\u2009↑";// uk 2026-03-29
+                          }
+                          if (heading >= 225 && heading < 270) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "↖";// uk 2026-03-29
+                              titel_pfeil = "\u2009↖";// uk 2026-03-29
+                          }
+                          if (heading >= 270 && heading < 315) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "←";// uk 2026-03-29
+                              titel_pfeil = "\u2009←";// uk 2026-03-29
+                          }
+                          if (heading >= 315 && heading < 360) {
+                              document.getElementById("Anweisung1").textContent = "nach Süd-Westen gehen " + "↙";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↙";// uk 2026-03-29
+                          }
+                      }
+
+                      if (dz > 0 && dx > 0) {
+                          document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen";// uk 2026-03-27
+                          if (heading >= 0 && heading < 45) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "↑";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↑";// uk 2026-03-29
+                          }
+                          if (heading >= 45 && heading < 90) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "↖";// uk 2026-03-29
+                              titel_pfeil = "\u2009↖";// uk 2026-03-29
+                          }
+                          if (heading >= 90 && heading < 135) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "←";// uk 2026-03-29
+                              titel_pfeil = "\u2009←";// uk 2026-03-29
+                          }
+                          if (heading >= 135 && heading < 180) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "↙";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↙";// uk 2026-03-29
+                          }
+                          if (heading >= 180 && heading < 225) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "↓";// uk 2026-03-29
+                              titel_pfeil = "\u2009↓";// uk 2026-03-29
+                          }
+                          if (heading >= 225 && heading < 270) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "↘";// uk 2026-03-29
+                              titel_pfeil = "\u2009↘";// uk 2026-03-29
+                          }
+                          if (heading >= 270 && heading < 315) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "→";// uk 2026-03-29
+                              titel_pfeil = "\u2009→";// uk 2026-03-29
+                          }
+                          if (heading >= 315 && heading < 360) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Osten gehen " + "↗";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↗";// uk 2026-03-29
+                          }
+
+                      }
+
+                      if (dz > 0 && dx < 0) {
+                          document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen";// uk 2026-03-27
+                          if (heading >= 0 && heading < 45) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "↖";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↖";// uk 2026-03-29
+                          }
+                          if (heading >= 45 && heading < 90) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "←";// uk 2026-03-29
+                              titel_pfeil = "\u2009←";// uk 2026-03-29
+                          }
+                          if (heading >= 90 && heading < 135) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "↙";// uk 2026-03-29
+                              titel_pfeil = "\u2009↙";// uk 2026-03-29
+                          }
+                          if (heading >= 135 && heading < 180) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "↓";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↓";// uk 2026-03-29
+                          }
+                          if (heading >= 180 && heading < 225) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "↘";// uk 2026-03-29
+                              titel_pfeil = "\u2009↘";// uk 2026-03-29
+                          }
+                          if (heading >= 225 && heading < 270) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "→";// uk 2026-03-29
+                              titel_pfeil = "\u2009→";// uk 2026-03-29
+                          }
+                          if (heading >= 270 && heading < 315) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "↗";// uk 2026-03-29
+                              titel_pfeil = "\u2009↗";// uk 2026-03-29
+                          }
+                          if (heading >= 315 && heading < 360) {
+                              document.getElementById("Anweisung1").textContent = "nach Nord-Westen gehen " + "↑";// uk 2026-03-29 
+                              titel_pfeil = "\u2009↑";// uk 2026-03-29
+                          }
+                      }
+
+                     
+                     
+
+                      // Rohposition (Meter)
+                      /*
+                      let targetPos = new THREE.Vector3(
+                          dx,
+                          0,
+                          -dz // WebXR forward = -Z
+                      );
+                      */
+
+                     /*
+                      //Heading-Korrektur // uk 2026-03-28
+                      let correctedHeading = headingOffset !== null
+                          ? heading - headingOffset
+                          : 0;
+
+                      let angle = THREE.MathUtils.degToRad(correctedHeading);
+
+                      //Rotation anwenden
+                      let rotatedX = dx * Math.cos(angle) - dz * Math.sin(angle);
+                      let rotatedZ = dx * Math.sin(angle) + dz * Math.cos(angle);
+
+                      // WebXR forward = -Z
+                      let targetPos = new THREE.Vector3(
+                          rotatedX,
+                          -1.5,
+                          -rotatedZ
+                      );
+                      */
+
+
+
+                      //Ausgabe der WebXR Koordinaten des Ziels: uk. 2026-03.228
+                      //document.getElementById("renderWebXRintern").textContent = "dx= " + dx.toFixed(0) + " / dz= " + dz.toFixed(0);// uk 2026-03-28
+
+                      let targetPos = new THREE.Vector3(
+                          dx,
+                          -1.5,
+                          -dz
+                      );
+                      
+                      sphere.position.copy(targetPos);
+                      
+                      //scene.rotation.y = THREE.MathUtils.degToRad(heading);
+                      const pos = sphere.position;
+
+                      document.getElementById("render_spherePos").textContent = // uk 2026-03-28
+                          "x: " + pos.x.toFixed(2) +
+                          " | y: " + pos.y.toFixed(2) +
+                          " | z: " + pos.z.toFixed(2);
+
+                      
+
+                      // ===== SMOOTHING =====
+                      
+                      if (!initialized) {
+                          smoothedPosition.copy(targetPos);
+                          initialized = true;
+                      } else {
+                          smoothedPosition.lerp(targetPos, 0.1); // 0.1 = weich
+                          //smoothedPosition.lerp(targetPos, 0.03);
+                          //smoothedPosition.copy(targetPos);
+                      }
+
+                      //sphere.position.copy(smoothedPosition);
+
+
+                      // Szene drehen statt Objekt
+
+                      //scene.rotation.y = headingRad;
+                     
+                      //scene.rotation.y = THREE.MathUtils.degToRad(-15);//um 15° nach rechts drehen
+                      //scene.rotation.y = THREE.MathUtils.degToRad(heading);//um 15° nach rechts drehen
+
+         
+                      sphere.visible = true;
+
+                      let distance = smoothedPosition.length();
+
+                      distance = distanceUTM(currentUTM, targetUTM); //oder so hier überschreiben // uk 2026-03-2
+                      
+
+                      console.log("Distanz:", distance.toFixed(1), "m");
+                      document.getElementById("distanz").textContent = distance.toFixed(1);// uk 2026-03-27
+                      document.getElementById("deast_z").textContent = dx.toFixed(1);// uk 2026-03-27
+                      document.getElementById("dnorth_z").textContent = dz.toFixed(1);// uk 2026-03-27
+
+                      document.getElementById("titel_uk").textContent = "AR-Rive" + " in " + distance.toFixed(1) + " m" + titel_pfeil;// uk 2026-03-26
+
+                      sphere.visible = distance < 1999.0;//uk 2026-04-03 später wieder auf z.B. 200m reduzieren
+
+                      //===== Distanz ========
+                      //distanceDiv.innerText = "Distanz: " + distance.toFixed(1) + " m";
+                      //document.getElementById("distanz2").textContent = distance.toFixed(1);// uk 2026-03-27
+                      distanceDiv.innerText = "Distanz: " + distance.toFixed(1) + " m";
+
+
+
+                  } //end if (currentUTM && targetUTM) {
+
+
+
+                  renderer.render(scene, camera);
+              }
+
+              // ===== UTM Umrechnung =====
+              function latLonToUTM(lat, lon) {
+                  const lat_rad = lat * Math.PI / 180;
+                  const lon_rad = lon * Math.PI / 180;
+
+                  const a = 6378137.0;
+                  const b = 6356752.314;
+
+                  const G0 = 111132.952547;
+                  const G2 = -16038.5088;
+                  const G4 = 16.8326;
+                  const G6 = -0.0220;
+
+                  const m = 0.9996;
+                  const L0 = 9;
+                  const L_delta = lon - L0;
+
+                  const c = (a ** 2) / b;
+                  const t = Math.tan(lat_rad);
+                  const eta_square = (a ** 2 - b ** 2) * (Math.cos(lat_rad) ** 2) / (b ** 2);
+                  const N_quer = c / Math.sqrt(1 + eta_square);
+                  const roh = 180 / Math.PI;
+
+                  const H1 = m / roh * N_quer * Math.cos(lat_rad);
+                  const H3 = m / (6 * (roh ** 3)) * N_quer * Math.cos(lat_rad) ** 3 * (1 - t ** 2 + eta_square);
+                  const H5 = m / (120 * (roh ** 5)) * N_quer * Math.cos(lat_rad) ** 5;
+
+                  const H2 = m / (2 * (roh ** 2)) * N_quer * Math.cos(lat_rad) ** 2 * t;
+                  const H4 = m / (24 * (roh ** 4)) * N_quer * Math.cos(lat_rad) ** 4 * t;
+                  const H6 = m / (720 * (roh ** 6)) * N_quer * Math.cos(lat_rad) ** 6 * t;
+
+                  const E0 = ((L0 + 3) / 6 + 30.5) * 1e6;
+                  const G = G0 * lat + G2 * Math.sin(2 * lat_rad) + G4 * Math.sin(4 * lat_rad) + G6 * Math.sin(6 * lat_rad);
+
+                  const E = E0 + H1 * L_delta + H3 * (L_delta ** 3) + H5 * (L_delta ** 5);
+                  const N = m * G + H2 * (L_delta ** 2) + H4 * (L_delta ** 4) + H6 * (L_delta ** 6);
+
+                  return { E, N };
+              }
+
+              // Hilfsfunktion für GPS/UTM/SLAM Reset uk 2026-03-28
+              function distanceUTM(a, b) {
+                  let dx = a.E - b.E;
+                  let dz = a.N - b.N;
+                  return Math.sqrt(dx * dx + dz * dz);
+              }
+
+
+
+
+          </script>
+
+
+      </body></html>
