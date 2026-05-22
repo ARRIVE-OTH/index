@@ -44,24 +44,22 @@
     slowly changing color to prove it's working.
     <a class="back" href="https://immersive-web.github.io/webxr-samples/index.html">Back</a>-->
 
-                          <span>La/Lo:</span>
-                          <span id="latitude"></span>/<span id="longitude"></span> | Acc: +/- <span id="accuracy"></span> m<br />
-
-                          <span>ell. Höhe: </span> <span id="altitude"></span> m <span> | Acc: +/- </span> <span id="altitudeAccuracy"></span>  <br />
-                          <span>E/N: </span> <span id="east"></span> / <span id="north"></span><br />
-                          <span>Azimut: </span> <span id="heading"></span><br />
-                          <span>Azimut2 initGPS()watchPosition(): </span> <span id="heading2"></span><br />
-                          <span>Azimut in render(): </span> <span id="heading_render"></span><br />
-                          <span>Azimut_rad in render(): </span> <span id="heading_render_rad"></span><br />
-                          <span>WebXRintern in render(): </span> <span id="renderWebXRintern"></span><br />
-                          <span>Verdrehung WebXRintern in render(): </span> <span id="VerdrehungrenderWebXRintern"></span><br />
-                          <span>Sphere.position in render(): </span> <span id="render_spherePos"></span><br />
-                          <span>E/N: </span> <span id="east_z"></span> / <span id="north_z"></span> (Ziel)<br />
-                          <span>Dist: </span><span id="distanz"></span><br />
-                          <span>dE/nN: </span> <span id="deast_z"></span> / <span id="dnorth_z"></span> (Ziel)<br />
-                          <span>Anweisung 1: </span> <span id="Anweisung1"></span><br />
-                          <span>Anweisung 2: </span> <span id="Anweisung2"></span><br />
-                          <span>moved: </span> <span id="moved"></span><br />
+                          <span>La/Lo:</span><span id="latitude"></span>/<span id="longitude"></span> | Acc: +/- <span id="accuracy"></span> m<br />
+                          <div style="display:none;"><span style="display:none;">ell. Höhe: </span> <span id="altitude"></span> m <span> | Acc: +/- </span> <span id="altitudeAccuracy" style="display:none;"></span>  <br /></div>
+                          <div style="display:none;"><span style="display:none;">E/N: </span> <span id="east"></span> / <span id="north" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Azimut: </span> <span id="heading" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Azimut2 initGPS()watchPosition(): </span> <span id="heading2" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Azimut in render(): </span> <span id="heading_render" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Azimut_rad in render(): </span> <span id="heading_render_rad" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">WebXRintern in render(): </span> <span id="renderWebXRintern" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Verdrehung WebXRintern in render(): </span> <span id="VerdrehungrenderWebXRintern" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Sphere.position in render(): </span> <span id="render_spherePos" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">E/N: </span> <span id="east_z" style="display:none;"></span> / <span id="north_z" style="display:none;"></span> (Ziel)<br /></div>
+                          <div style="display:none;"><span style="display:none;">Dist: </span><span id="distanz" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">dE/nN: </span> <span id="deast_z"></span> / <span id="dnorth_z" style="display:none;"></span> (Ziel)<br /></div>
+                          <div style="display:none;"><span style="display:none;">Anweisung 1: </span> <span id="Anweisung1" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">Anweisung 2: </spanstyle="display:none;"> <span id="Anweisung2" style="display:none;"></span><br /></div>
+                          <div style="display:none;"><span style="display:none;">moved: </span> <span id="moved"></span><br /></div>
                       </p>
                       <div id="session-info"></div>
                       <div id="pose"></div>
@@ -435,7 +433,7 @@
 
 
 
-                          if (moved > 30) {
+                          if (moved > 100) {
                               console.log("🔄 Soft-Reset nach", moved.toFixed(1), "m");
 
                               // 👉 SANFTE KORREKTUR statt hartem Reset
@@ -453,7 +451,7 @@
 
                               // 👉 AR stoppen //uk 2026-04-06
                               if (xrSession) {
-                                  console.log("🛑 30 m erreicht → AR wird beendet");
+                                  console.log("🛑 100 m erreicht → AR wird beendet");
                                   xrSession.end();
 
                                   resetRequested = true;//uk 2026-04-08
